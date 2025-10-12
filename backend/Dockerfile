@@ -4,22 +4,17 @@ FROM python:3.10-slim
 # Set the working directory in the container
 WORKDIR /app
 
-Copy the dependencies file to the working directory
+# Copy the dependencies file to the working directory
 COPY requirements.txt .
 
 # Install any needed dependencies specified in requirements.txt
-# --no-cache-dir: Disables the cache, which reduces the image size.
-# -r requirements.txt: Installs packages from the given requirements file.
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application's code from the host to the container
 COPY . .
 
-# Expose the port the app runs on. Render's default port is 10000.
+# Expose the port the app runs on (Render's default port is 10000)
 EXPOSE 10000
 
-# Command to run the application using Uvicorn.
-# "main:app": 'main' is the Python file (main.py), and 'app' is the FastAPI instance inside that file.
-# "--host", "0.0.0.0": Makes the server accessible from outside the container.
-# "--port", "10000": The port to run on, matching the EXPOSE instruction.
+# Command to run the application using Uvicorn
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "10000"]
