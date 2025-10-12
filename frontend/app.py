@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
-import pypdf
+import os
+from pypdf import PdfReader
 import io
 import uuid
 
@@ -8,141 +9,123 @@ import uuid
 st.set_page_config(
     page_title="ContextCore",
     page_icon="🧠",
-    layout="wide"
+    layout="wide",
 )
 
 # --- Backend API URL ---
-# Fetch the backend URL from Streamlit secrets
-try:
-    BACKEND_URL = st.secrets["BACKEND_URL"]
-except KeyError:
-    st.error("BACKEND_URL secret not found! Please set it in your Streamlit Cloud settings.")
-    st.stop()
+# Try to get the backend URL from Streamlit secrets, otherwise default to localhost.
+# This makes the app adaptable for both local development and cloud deployment.
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000/chat")
+
+# --- Session State Initialization ---
+# Initialize session state variables to preserve data across user interactions.
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid.uuid4())
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+if "uploaded_files_content" not in st.session_state:
+    st.session_state.uploaded_files_content = None
 
 # --- Helper Functions ---
-def extract_text_from_pdf(pdf_file):
-    """Extracts text from an uploaded PDF file."""
+def extract_text_from_pdf(file_bytes):
+    """Extracts text from a PDF file provided as bytes."""
     try:
-        pdf_reader = pypdf.PdfReader(pdf_file)
-        text = ""
-        for page in pdf_reader.pages:
-            text += page.extract_text() or ""
+        pdf = PdfReader(io.BytesIO(file_bytes))
+        text = "".join(page.extract_text() for page in pdf.pages if page.extract_text())
         return text
     except Exception as e:
         st.error(f"Error reading PDF file: {e}")
         return None
 
-def extract_text_from_txt(txt_file):
-    """Extracts text from an uploaded TXT file."""
+def extract_text_from_txt(file_bytes):
+    """Extracts text from a TXT file provided as bytes."""
     try:
-        return txt_file.getvalue().decode("utf-8")
+        return file_bytes.decode('utf-8')
     except Exception as e:
         st.error(f"Error reading TXT file: {e}")
         return None
 
-def call_chat_api(question, files_content, session_id):
-    """Sends a request to the FastAPI backend and gets the response."""
-    endpoint = f"{BACKEND_URL}/chat"
-    payload = {
-        "question": question,
-        "files_content": files_content,
-        "session_id": session_id
-    }
-    try:
-        with st.spinner('Thinking...'):
-            response = requests.post(endpoint, json=payload, timeout=120) # Increased timeout
-        response.raise_for_status()  # Raises an exception for bad status codes (4xx or 5xx)
-        return response.json()["answer"]
-    except requests.exceptions.RequestException as e:
-        st.error(f"Failed to connect to the backend. Please ensure it's running. Error: {e}")
-        return None
-    except Exception as e:
-        st.error(f"An unexpected error occurred: {e}")
-        return None
-
-# --- Session State Initialization ---
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "uploaded_files_content" not in st.session_state:
-    st.session_state.uploaded_files_content = []
-if "session_id" not in st.session_state:
-    st.session_state.session_id = str(uuid.uuid4())
-if "files_processed" not in st.session_state:
-    st.session_state.files_processed = False
-
-
 # --- UI Layout ---
+st.title("🧠 ContextCore: Chat with your Documents")
+st.markdown("Upload your documents, ask questions, and get answers directly from the content.")
 
-# Header
-st.title("🧠 ContextCore: Chat with Your Documents")
-st.markdown("Upload your documents, and I'll answer questions based on their content.")
-
-# Sidebar for file uploads
 with st.sidebar:
     st.header("1. Upload Documents")
+    st.markdown("Upload one or more PDF or TXT files. The content will be processed to answer your questions.")
+    
     uploaded_files = st.file_uploader(
-        "Choose PDF or TXT files",
+        "Choose your documents",
         type=["pdf", "txt"],
         accept_multiple_files=True,
-        key="file_uploader"
+        label_visibility="collapsed"
     )
 
-    if st.button("Process Documents", key="process_button"):
-        if uploaded_files:
-            st.session_state.uploaded_files_content = []
-            with st.spinner("Processing files..."):
-                for file in uploaded_files:
-                    file_extension = file.name.split('.')[-1].lower()
-                    if file_extension == "pdf":
-                        text = extract_text_from_pdf(io.BytesIO(file.getvalue()))
-                    elif file_extension == "txt":
-                        text = extract_text_from_txt(file)
-                    else:
-                        st.warning(f"Unsupported file type: {file.name}")
-                        continue
-
-                    if text:
-                        st.session_state.uploaded_files_content.append(text)
-
-            if st.session_state.uploaded_files_content:
-                st.session_state.files_processed = True
-                st.success("Documents processed successfully! You can now ask questions.")
-                # Clear previous chat history on new document processing
-                st.session_state.messages = []
+    if uploaded_files:
+        all_texts = []
+        for file in uploaded_files:
+            file_bytes = file.getvalue()
+            if file.type == "application/pdf":
+                text = extract_text_from_pdf(file_bytes)
+            elif file.type == "text/plain":
+                text = extract_text_from_txt(file_bytes)
             else:
-                st.error("Could not extract text from any of the uploaded files.")
-        else:
-            st.warning("Please upload at least one document.")
+                text = None
+            
+            if text:
+                all_texts.append(text)
+                st.success(f"✅ Successfully processed `{file.name}`")
+            else:
+                st.error(f"❌ Could not extract text from `{file.name}`")
+        
+        # Store the extracted text in session state if any was found.
+        if all_texts:
+            st.session_state.uploaded_files_content = all_texts
 
-# Main chat interface
-st.header("2. Ask Questions")
+    st.markdown("---")
+    st.info("Your documents are processed for each question and are not stored on the server.")
 
-# Display a welcome message if no documents are processed yet
-if not st.session_state.files_processed:
-    st.info("Please upload and process your documents using the sidebar to begin.")
-else:
-    # Display chat messages from history
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+# --- Main Chat Interface ---
+st.header("2. Ask a Question")
 
-    # React to user input
-    if prompt := st.chat_input("Ask a question about your documents..."):
-        # Add user message to chat history
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        # Display user message in chat message container
-        with st.chat_message("user"):
-            st.markdown(prompt)
+# Display previous chat messages
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-        # Get assistant response from the backend
-        with st.chat_message("assistant"):
-            answer = call_chat_api(
-                prompt,
-                st.session_state.uploaded_files_content,
-                st.session_state.session_id
-            )
-            if answer:
-                st.markdown(answer)
+# Handle new user input
+if prompt := st.chat_input("Ask something about your documents..."):
+    # Add user's message to the chat history
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    # Check if documents have been uploaded before proceeding
+    if st.session_state.uploaded_files_content is None:
+        st.warning("Please upload at least one document before asking a question.", icon="⚠️")
+    else:
+        # Prepare the request payload for the backend
+        api_payload = {
+            "question": prompt,
+            "files_content": st.session_state.uploaded_files_content,
+            "session_id": st.session_state.session_id,
+        }
+
+        # Send request to the backend and display the response
+        try:
+            with st.spinner("Thinking..."):
+                response = requests.post(BACKEND_URL, json=api_payload, timeout=120)
+                response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+                
+                answer = response.json().get("answer", "No answer found.")
+
+                # Add assistant's response to chat history
                 st.session_state.messages.append({"role": "assistant", "content": answer})
-            else:
-                st.error("Failed to get a response from the backend.")
+                with st.chat_message("assistant"):
+                    st.markdown(answer)
+
+        except requests.exceptions.RequestException as e:
+            st.error(f"Could not connect to the backend. Please ensure it is running. Error: {e}")
+
+

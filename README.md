@@ -29,7 +29,7 @@ The Streamlit frontend sends the content of your uploaded documents and your que
 The backend performs the **RAG** process for each question:
 
 1. It splits the document text into manageable chunks.  
-2. It uses a **free, open-source model** from Hugging Face — [`hkunlp/instructor-large`](https://huggingface.co/hkunlp/instructor-large) — to turn those text chunks into numerical representations (vectors).  
+2. It uses a **free, open-source model** from Hugging Face — [`all-MiniLM-L6-v2`] — to turn those text chunks into numerical representations (vectors).  
    - This runs **locally on the server**, requiring **no extra API key** from you for the embedding model.  
 3. It builds a temporary, in-memory **FAISS** vector database for efficient text similarity search.  
 4. It searches this database to find the most relevant chunks related to your question.
