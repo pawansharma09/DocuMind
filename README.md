@@ -1,54 +1,46 @@
-# ContextCore: Chat with your Documents
+# ✨ AuraRAG - Intelligent Document Q&A
 
-**ContextCore** is a simple yet powerful **Retrieval-Augmented Generation (RAG)** application.  
-It allows you to upload documents and ask questions about their content through a user-friendly chat interface.
-
----
-
-## 🧠 Overview
-
-This project is built with a modern, decoupled architecture:
-
-- **Backend:** A **FastAPI** server that handles document processing, embedding generation using open-source **Hugging Face** models, and interaction with the **Gemini Large Language Model**.
-- **Frontend:** A **Streamlit** application that provides the user interface for file uploads and chat.
+**AuraRAG** is a powerful, yet simple, Retrieval-Augmented Generation (RAG) application.  
+It allows you to upload your own documents and ask questions about them, getting intelligent, context-aware answers powered by **Google's Gemini 2.5 Flash** and open-source embedding models.
 
 ---
 
-## ⚙️ How it Works
+## 🚀 Key Features
 
-### 1. Upload
-You upload one or more documents (`.pdf`, `.txt`) through the Streamlit frontend.
-
-### 2. Ask
-You ask a question in the chat window.
-
-### 3. Process
-The Streamlit frontend sends the content of your uploaded documents and your question to the FastAPI backend.
-
-### 4. Retrieve & Augment
-The backend performs the **RAG** process for each question:
-
-1. It splits the document text into manageable chunks.  
-2. It uses a **free, open-source model** from Hugging Face — [`all-MiniLM-L6-v2`] — to turn those text chunks into numerical representations (vectors).  
-   - This runs **locally on the server**, requiring **no extra API key** from you for the embedding model.  
-3. It builds a temporary, in-memory **FAISS** vector database for efficient text similarity search.  
-4. It searches this database to find the most relevant chunks related to your question.
-
-### 5. Generate
-The backend sends the relevant chunks (*context*) and your original question to the **Gemini model**, which generates a well-informed answer based only on the content of your documents.
-
-### 6. Respond
-The final answer is sent back to the Streamlit frontend and displayed in the chat interface.
+- **Modern UI:** A clean and intuitive user interface built with Streamlit.  
+- **Flexible Backend:** A scalable and powerful backend using FastAPI.  
+- **High-Quality Embeddings:** Utilizes a free, state-of-the-art sentence transformer from Hugging Face.  
+- **Blazing-Fast Retrieval:** Employs FAISS for efficient in-memory similarity searches.  
+- **Advanced Generation:** Leverages the speed and power of Google's Gemini 2.5 Flash model.  
+- **Ready for Deployment:** Includes configurations for deploying the frontend to Streamlit Cloud and the backend to Render.
 
 ---
 
-## 🧩 Tech Stack
+## 🏛️ Project Architecture
 
-- **Backend:** FastAPI, FAISS, Hugging Face Embeddings, Gemini API
-- **Frontend:** Streamlit
-- **Deployment:** Render (Backend) + Streamlit Cloud (Frontend)
-- **Language:** Python 3.10+
+The application is split into two main components: **a frontend** and **a backend**.
+
+### **Frontend (Streamlit)**
+This is the user-facing part of the application.  
+It handles file uploads, user queries, and displays the final answer.  
+It communicates with the backend via HTTP requests.
+
+### **Backend (FastAPI)**
+This is the core engine.  
+It receives the documents and query from the frontend, creates vector embeddings, builds a FAISS index, retrieves relevant context, and uses the Gemini API to generate the final answer.
+
+## 💻 Technologies Used
+
+| **Component** | **Technology** |
+|----------------|----------------|
+| **Frontend** | Streamlit |
+| **Backend** | FastAPI, Uvicorn |
+| **LLM** | Google Gemini 2.5 Flash |
+| **Embedding Model** | sentence-transformers/all-MiniLM-L6-v2 |
+| **Vector Database** | FAISS (In-memory) |
+| **Deployment** | Render (Backend), Streamlit Cloud (Frontend) |
 
 ---
 
-> Built with ❤️ using FastAPI, Streamlit, FAISS, Hugging Face, and Gemini.
+✨ **AuraRAG** – Bringing intelligence and context to your documents.
+

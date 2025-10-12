@@ -1,133 +1,126 @@
-import os
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from typing import List
-
-# Import modern LangChain components (as of late 2025)
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import FAISS
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.documents import Document
+import google.generativeai as genai
+from sentence_transformers import SentenceTransformer
+import faiss
+import numpy as np
+import os
+import re
 
 # --- Configuration ---
-# Load API keys from environment variables
+# It's recommended to set the API key as an environment variable
+# for security reasons.
 try:
-    GOOGLE_API_KEY = os.environ["GOOGLE_API_KEY"]
-except KeyError:
-    # This provides a clear error message if the key isn't set.
-    raise RuntimeError("FATAL: GOOGLE_API_KEY environment variable not set.")
+    GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+    genai.configure(api_key=GOOGLE_API_KEY)
+except Exception:
+    raise RuntimeError("GOOGLE_API_KEY environment variable not set.")
 
-# --- Pydantic Models for API Data Validation ---
-class ChatRequest(BaseModel):
-    """Defines the structure for a chat request from the frontend."""
-    question: str = Field(..., description="The user's question.", min_length=1)
-    files_content: List[str] = Field(..., description="A list of text content from all uploaded files.")
-    session_id: str = Field(..., description="A unique identifier for the user session.")
 
-class ChatResponse(BaseModel):
-    """Defines the structure for a chat response sent to the frontend."""
-    answer: str = Field(..., description="The generated answer from the language model.")
+# Initialize the models
+# The LLM model for generation.
+llm = genai.GenerativeModel('gemini-2.5-flash')
 
-# --- FastAPI Application Setup ---
+# The embedding model from Hugging Face.
+# 'all-MiniLM-L6-v2' is a good balance of speed and performance.
+embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# --- Pydantic Models for API validation ---
+class RAGRequest(BaseModel):
+    query: str = Field(..., min_length=1, description="The user's question.")
+    documents: List[str] = Field(..., min_length=1, description="A list of documents to search.")
+
+class RAGResponse(BaseModel):
+    answer: str
+
+# --- FastAPI App Initialization ---
 app = FastAPI(
-    title="ContextCore API",
-    description="Backend API for the ContextCore RAG application. Uses all-MiniLM-L6-v2 for embeddings.",
-    version="1.1.0"
+    title="AuraRAG Backend",
+    description="API for Retrieval-Augmented Generation using Gemini and FAISS.",
+    version="1.0.0"
 )
 
-# --- Core RAG Components (Initialized Globally) ---
-# Initialize models once to be reused across all API requests for efficiency.
-# This prevents reloading the models every time a user asks a question.
-
-# 1. Embedding Model: Using a lightweight and efficient model from Hugging Face.
-#    This model runs locally on the server's CPU.
-embedding_model = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2",
-    model_kwargs={'device': 'cpu'} # Explicitly use CPU
-)
-
-# 2. Language Model: Using Gemini 1.5 Flash for fast and powerful generation.
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", google_api_key=GOOGLE_API_KEY)
-
-# 3. Prompt Template: Defines the instructions for the LLM.
-prompt = ChatPromptTemplate.from_template("""
-You are an intelligent assistant for question-answering tasks.
-Answer the user's question based *only* on the context provided below.
-If the information to answer the question is not in the context, state that you cannot find the answer in the provided documents.
-Be concise and helpful.
-
-Context:
-{context}
-
-Question:
-{input}
-""")
-
-# --- RAG Processing Logic ---
-def process_rag_request(question: str, files_content: List[str]) -> str:
-    """
-    Handles the entire RAG process for a given request. This is the core logic.
-    """
-    if not files_content or not any(files_content):
-        raise ValueError("No file content was provided for processing.")
-
-    # 1. Combine content from all files into a single text block.
-    combined_text = "\n\n--- NEW DOCUMENT ---\n\n".join(files_content)
-    documents = [Document(page_content=combined_text)]
-
-    # 2. Split the combined text into smaller, manageable chunks.
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
-    split_documents = text_splitter.split_documents(documents)
-
-    if not split_documents:
-        return "The document content was too short to be processed. Please upload a more substantial document."
-
-    # 3. Create an in-memory vector store from the chunks using the embedding model.
-    #    FAISS is used for its speed and efficiency.
-    try:
-        vector_store = FAISS.from_documents(split_documents, embedding_model)
-    except Exception as e:
-        print(f"Error creating FAISS vector store: {e}")
-        return "An error occurred while processing your documents. Please try again."
-
-    # 4. Create a retriever to search the vector store for relevant chunks.
-    retriever = vector_store.as_retriever(search_kwargs={"k": 3}) # Retrieve top 3 relevant chunks
-
-    # 5. Create the processing chain that combines the prompt, LLM, and document formatting.
-    document_chain = create_stuff_documents_chain(llm, prompt)
-
-    # 6. Retrieve the most relevant documents based on the user's question.
-    retrieved_docs = retriever.invoke(question)
+# --- Helper Functions ---
+def chunk_text(text: str, chunk_size: int = 512, overlap: int = 50) -> List[str]:
+    """Splits text into smaller, overlapping chunks."""
+    # Simple whitespace splitting
+    words = re.split(r'\s+', text)
+    if not words:
+        return []
     
-    # 7. Pass the retrieved documents and the question to the LLM to generate a final answer.
-    response = document_chain.invoke({
-        "input": question,
-        "context": retrieved_docs
-    })
+    chunks = []
+    current_pos = 0
+    while current_pos < len(words):
+        start = current_pos
+        end = current_pos + chunk_size
+        chunk_words = words[start:end]
+        chunks.append(" ".join(chunk_words))
+        current_pos += chunk_size - overlap
+    return [chunk for chunk in chunks if chunk.strip()]
 
-    return response
 
-# --- API Endpoints ---
-@app.post("/chat", response_model=ChatResponse)
-async def chat_handler(request: ChatRequest):
+# --- API Endpoint ---
+@app.post("/process", response_model=RAGResponse)
+async def process_rag_query(request: RAGRequest):
     """
-    Main endpoint to handle user chat requests. It orchestrates the RAG process.
+    Processes a RAG query by embedding documents, finding relevant chunks,
+    and generating an answer using the Gemini model.
     """
     try:
-        answer = process_rag_request(request.question, request.files_content)
-        return ChatResponse(answer=answer)
-    except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
+        # 1. Combine and Chunk Documents
+        full_text = "\n\n".join(request.documents)
+        if not full_text.strip():
+            raise HTTPException(status_code=400, detail="Documents cannot be empty.")
+            
+        chunks = chunk_text(full_text)
+        if not chunks:
+            raise HTTPException(status_code=400, detail="Failed to create text chunks from documents.")
+
+        # 2. Generate Embeddings for Chunks
+        chunk_embeddings = embedding_model.encode(chunks, convert_to_tensor=False)
+        
+        # 3. Create FAISS Index
+        d = chunk_embeddings.shape[1]  # Dimension of embeddings
+        index = faiss.IndexFlatL2(d)
+        index.add(np.array(chunk_embeddings).astype('float32'))
+        
+        # 4. Embed the Query
+        query_embedding = embedding_model.encode([request.query], convert_to_tensor=False)
+
+        # 5. Search for Relevant Chunks
+        k = min(5, len(chunks)) # Retrieve top 5 or fewer chunks
+        distances, indices = index.search(np.array(query_embedding).astype('float32'), k)
+        
+        relevant_chunks = [chunks[i] for i in indices[0]]
+        context = "\n\n---\n\n".join(relevant_chunks)
+
+        # 6. Construct Prompt for LLM
+        prompt = f"""
+        You are an intelligent assistant. Answer the following question based ONLY on the provided context.
+        If the answer is not found in the context, state that you cannot answer based on the provided information.
+        Do not use any external knowledge.
+
+        **Context:**
+        {context}
+
+        **Question:**
+        {request.query}
+
+        **Answer:**
+        """
+
+        # 7. Generate Answer with Gemini
+        response = llm.generate_content(prompt)
+        
+        return RAGResponse(answer=response.text)
+
     except Exception as e:
-        print(f"An unexpected server error occurred: {e}")
-        raise HTTPException(status_code=500, detail="An internal server error occurred. Please try again later.")
+        # Broad exception for now, can be refined for production
+        print(f"An error occurred: {e}")
+        raise HTTPException(status_code=500, detail=f"An internal server error occurred: {str(e)}")
 
-@app.get("/", summary="Health Check")
+# --- Root Endpoint for Health Check ---
+@app.get("/")
 def read_root():
-    """Provides a simple health check endpoint to confirm the server is running."""
-    return {"status": "ContextCore backend is running successfully."}
-
-
+    return {"status": "AuraRAG backend is running"}
