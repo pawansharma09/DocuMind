@@ -1,6 +1,7 @@
 # ContextCore: Chat with your Documents
 
-**ContextCore** is a simple yet powerful **Retrieval-Augmented Generation (RAG)** application. It allows you to upload documents and ask questions about their content through a user-friendly chat interface.
+**ContextCore** is a simple yet powerful **Retrieval-Augmented Generation (RAG)** application.  
+It allows you to upload documents and ask questions about their content through a user-friendly chat interface.
 
 ---
 
@@ -8,8 +9,8 @@
 
 This project is built with a modern, decoupled architecture:
 
-- **Backend**: A **FastAPI** server that handles document processing, embedding generation, and interaction with the **Gemini Large Language Model**.
-- **Frontend**: A **Streamlit** application that provides the user interface for file uploads and chat.
+- **Backend:** A **FastAPI** server that handles document processing, embedding generation using open-source **Hugging Face** models, and interaction with the **Gemini Large Language Model**.
+- **Frontend:** A **Streamlit** application that provides the user interface for file uploads and chat.
 
 ---
 
@@ -25,17 +26,29 @@ You ask a question in the chat window.
 The Streamlit frontend sends the content of your uploaded documents and your question to the FastAPI backend.
 
 ### 4. Retrieve & Augment
-The backend performs the **RAG process** for each question:
+The backend performs the **RAG** process for each question:
 
 1. It splits the document text into manageable chunks.  
-2. It uses **Google’s embedding models** to convert those text chunks into numerical representations (vectors).  
-3. It builds a temporary, in-memory vector database (using **FAISS**) to enable efficient searching.  
-4. It searches this database to find the most relevant chunks of text related to your question.
+2. It uses a **free, open-source model** from Hugging Face — [`hkunlp/instructor-large`](https://huggingface.co/hkunlp/instructor-large) — to turn those text chunks into numerical representations (vectors).  
+   - This runs **locally on the server**, requiring **no extra API key** from you for the embedding model.  
+3. It builds a temporary, in-memory **FAISS** vector database for efficient text similarity search.  
+4. It searches this database to find the most relevant chunks related to your question.
 
 ### 5. Generate
-The backend sends the relevant chunks (the *context*) and your original question to the **Gemini model**, which generates a well-informed answer based solely on the information in your documents.
+The backend sends the relevant chunks (*context*) and your original question to the **Gemini model**, which generates a well-informed answer based only on the content of your documents.
 
 ### 6. Respond
 The final answer is sent back to the Streamlit frontend and displayed in the chat interface.
 
 ---
+
+## 🧩 Tech Stack
+
+- **Backend:** FastAPI, FAISS, Hugging Face Embeddings, Gemini API
+- **Frontend:** Streamlit
+- **Deployment:** Render (Backend) + Streamlit Cloud (Frontend)
+- **Language:** Python 3.10+
+
+---
+
+> Built with ❤️ using FastAPI, Streamlit, FAISS, Hugging Face, and Gemini.
