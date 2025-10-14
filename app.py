@@ -5,14 +5,6 @@ from src.file_handler import get_text_from_files
 from src.vector_store_handler import get_text_chunks, get_vector_store
 from src.llm_handler import get_conversational_chain
 
-hide_st_style = """
-            <style>
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
-            </style>
-            """
-
 def setup_api_keys():
     """Load and configure API keys from .env or Streamlit secrets."""
     load_dotenv()
@@ -109,5 +101,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
