@@ -6,7 +6,7 @@ from docx import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import SentenceTransformerEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_google_genai import GoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
@@ -78,7 +78,8 @@ def get_conversational_chain(vector_store):
             st.error("Google API Key not found. Please add it to your Streamlit secrets.")
             return None
 
-        llm = GoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=google_api_key, temperature=0.3)
+        # Use ChatGoogleGenerativeAI for conversational tasks
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=google_api_key, temperature=0.3)
         
         memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
         
@@ -156,12 +157,19 @@ def main():
                 with st.spinner("Creating vector store... This may take a moment."):
                     vector_store = get_vector_store(text_chunks)
                     if vector_store:
-                        # Create the conversation chain and store it in the session state
                         st.session_state.conversation = get_conversational_chain(vector_store)
-                        st.session_state.chat_history = None # Reset chat history
+                        st.session_state.chat_history = None
                         st.success("Documents processed successfully!")
             else:
                 st.warning("Please upload at least one document.")
+        
+        # Add a divider and the clear chat button
+        st.divider()
+        if st.button("Clear Chat", use_container_width=True):
+            st.session_state.conversation = None
+            st.session_state.chat_history = None
+            st.rerun()
+
 
     # --- Main Chat Interface ---
     st.header("Ask DocuMind Anything")
@@ -172,7 +180,6 @@ def main():
     # Display chat history
     if st.session_state.chat_history:
         for i, message in enumerate(st.session_state.chat_history):
-            # User messages are at even indices, AI messages at odd indices
             if i % 2 == 0:
                  with st.chat_message("user", avatar="👤"):
                     st.write(message.content)
@@ -188,14 +195,9 @@ def main():
                 st.write(user_question)
              with st.chat_message("assistant", avatar="🤖"):
                 with st.spinner("Thinking..."):
-                    # Pass the question to the conversation chain
                     response = st.session_state.conversation({'question': user_question})
-                    # Update the chat history in the session state
                     st.session_state.chat_history = response['chat_history']
-                    
-                    # Get the latest assistant response
                     assistant_response = response['chat_history'][-1].content
-                    # Use the generator to stream the response
                     st.write_stream(stream_response(assistant_response))
         else:
             st.warning("Please process your documents before asking questions.")
