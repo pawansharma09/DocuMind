@@ -1,5 +1,5 @@
 import streamlit as st
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
@@ -31,14 +31,10 @@ def get_vector_store(text_chunks):
         st.warning("No text chunks to process. Cannot create vector store.")
         return None
     try:
-        # Using a popular sentence-transformer model for embeddings
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
         return vector_store
     except Exception as e:
-        # The HuggingFaceEmbeddings model will be downloaded on the first run, 
-        # which might take time and requires an internet connection.
         st.error(f"Error creating vector store with Hugging Face embeddings: {e}")
         st.info("Please ensure you have a stable internet connection for the initial model download.")
         return None
-
