@@ -1,6 +1,6 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains.question_answering import load_qa_chain
-from langchain.prompts import PromptTemplate
+from langchain.chains import create_qa_chain
+from langchain.prompts import ChatPromptTemplate
 
 def get_conversational_chain(google_api_key):
     """
@@ -14,7 +14,7 @@ def get_conversational_chain(google_api_key):
         google_api_key (str): The Google API key for authentication.
 
     Returns:
-        BaseQAChain: A LangChain question-answering chain object.
+        A LangChain question-answering chain object.
     """
     prompt_template = """
     You are a helpful assistant. Answer the question based on the provided context.
@@ -31,13 +31,15 @@ def get_conversational_chain(google_api_key):
 
     Answer:
     """
+
     model = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash",
-        temperature=0.4, 
+        temperature=0.4,
         google_api_key=google_api_key
     )
-    prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
-    chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
+
+    prompt = ChatPromptTemplate.from_template(prompt_template)
+
+    # For LangChain >= 0.1.0, use the new create_qa_chain API
+    chain = create_qa_chain(model, prompt=prompt)
     return chain
-
-
