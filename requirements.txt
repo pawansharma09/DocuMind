@@ -1,12 +1,1 @@
-streamlit
-python-dotenv
-pypdf
-python-docx
-langchain
-langchain-core
-langchain-community
-langchain-google-vertexai
-langchain-text-splitters
-langchain-huggingface
-faiss-cpu
-sentence-transformers
+streamlit python-dotenv PyPDF2 python-docx langchain langchain-google-genai faiss-cpu sentence-transformers
