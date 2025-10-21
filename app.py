@@ -4,7 +4,7 @@ import time
 from typing import List, Tuple
 from PyPDF2 import PdfReader
 from docx import Document as DocxDocument
-from langchain_text_splitter import RecursiveCharacterTextSplitter
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.embeddings import SentenceTransformerEmbeddings
 from langchain.vectorstores import FAISS
 from langchain.schema import Document as LC_Document
@@ -275,4 +275,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
