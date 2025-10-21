@@ -1,11 +1,12 @@
 streamlit
 python-dotenv
-PyPDF2
+pypdf
 python-docx
 langchain
 langchain-core
 langchain-community
-langchain-google-genai
+langchain-google-vertexai
 langchain-text-splitters
+langchain-huggingface
 faiss-cpu
 sentence-transformers
