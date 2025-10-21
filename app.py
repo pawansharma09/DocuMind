@@ -51,7 +51,6 @@ def main():
                     raw_text = get_text_from_files(uploaded_files)
                     if raw_text:
                         text_chunks = get_text_chunks(raw_text)
-                        # The vector store now uses Hugging Face embeddings, no API key needed here
                         vector_store = get_vector_store(text_chunks)
                         if vector_store:
                             st.session_state.vector_store = vector_store
@@ -87,10 +86,15 @@ def main():
             with st.spinner("Finding answer..."):
                 try:
                     vector_store = st.session_state.vector_store
-                    docs = vector_store.similarity_search(prompt)
+                    retriever = vector_store.as_retriever()
                     chain = get_conversational_chain(google_api_key)
-                    response = chain({"input_documents": docs, "question": prompt}, return_only_outputs=True)
-                    answer = response["output_text"]
+                    
+                    # Updated invocation using LCEL
+                    response = chain.invoke({
+                        "context": retriever.get_relevant_documents(prompt),
+                        "question": prompt
+                    })
+                    answer = response.content
 
                     st.session_state.messages.append({"role": "assistant", "content": answer})
                     with st.chat_message("assistant"):
@@ -101,6 +105,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
