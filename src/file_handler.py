@@ -1,5 +1,5 @@
 import streamlit as st
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 from docx import Document
 
 def get_text_from_files(uploaded_files):
@@ -29,6 +29,5 @@ def get_text_from_files(uploaded_files):
                 text += file.getvalue().decode("utf-8")
         except Exception as e:
             st.error(f"Error reading file {file.name}: {e}")
-            # Optionally, you might want to skip the file or handle the error differently
             continue
     return text
