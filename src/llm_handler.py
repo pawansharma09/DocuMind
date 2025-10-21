@@ -1,6 +1,7 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_community.chains import create_qa_chain
+from langchain_google_vertexai import ChatVertexAI
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
 
 def get_conversational_chain(google_api_key):
     """
@@ -23,12 +24,19 @@ Question:
 Answer:
 """
 
-    model = ChatGoogleGenerativeAI(
+    model = ChatVertexAI(
         model="gemini-2.5-flash",
         temperature=0.4,
         google_api_key=google_api_key
     )
 
     prompt = ChatPromptTemplate.from_template(prompt_template)
-    chain = create_qa_chain(model, prompt=prompt)
+    
+    chain = (
+        {"context": RunnablePassthrough(), "question": RunnablePassthrough()}
+        | prompt
+        | model
+        | StrOutputParser()
+    )
+    
     return chain
