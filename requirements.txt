@@ -1,9 +1,9 @@
-streamlit 
-python-dotenv 
-PyPDF2 
-python-docx 
-langchain 
-langchain-google-genai 
-faiss-cpu 
+streamlit
+langchain
+langchain-google-genai
+langchain-community
+pypdf
+python-docx
+faiss-cpu
 sentence-transformers
-
+huggingface-hub
