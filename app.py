@@ -1,221 +1,207 @@
 import streamlit as st
-from langchain_google_genai import ChatGoogleGenerativeAI
+import os
+from PyPDF2 import PdfReader
+from docx import Document
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.embeddings import SentenceTransformerEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain.chains.question_answering import load_qa_chain
+from langchain_google_genai import GoogleGenerativeAI
+from langchain.prompts import PromptTemplate
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
-from langchain.prompts import PromptTemplate
-from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
-from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceInstructEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-import os
-import tempfile
 
-# --- PROMPT TEMPLATE ---
-# This template guides the language model to use the provided context and handle cases where the answer is not found.
-PROMPT_TEMPLATE = """
-Answer the question based only on the following context. If the answer is not in the context, state that the information is not in the provided documents and then provide an answer based on your general knowledge.
-
-Context:
-{context}
-
-Chat History:
-{chat_history}
-
-Question:
-{question}
-
-Helpful Answer:
-"""
-
-def get_google_api_key():
+# Function to extract text from various file types
+def get_text_from_files(uploaded_files):
     """
-    Retrieves the Google API key from Streamlit secrets or a sidebar input.
-    For production, it's recommended to use st.secrets.
-    """
-    if "GOOGLE_API_KEY" in st.secrets:
-        return st.secrets["GOOGLE_API_KEY"]
-    else:
-        return st.sidebar.text_input("Enter your Google API Key:", type="password")
-
-@st.cache_resource
-def get_embeddings_model():
-    """
-    Loads the sentence-transformer model for creating text embeddings.
-    Using st.cache_resource to load this once and reuse across sessions.
-    """
-    return HuggingFaceInstructEmbeddings(model_name="hkunlp/instructor-large")
-
-def get_text_from_documents(uploaded_files):
-    """
-    Extracts text from uploaded files (PDF, DOCX, TXT).
-    Handles files by saving them temporarily and using the appropriate loader.
+    Reads and extracts text from uploaded files (PDF, DOCX, TXT).
     """
     text = ""
-    for uploaded_file in uploaded_files:
+    for file in uploaded_files:
         try:
-            # Create a temporary file to preserve the original file
-            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
-                tmp_file.write(uploaded_file.getvalue())
-                tmp_file_path = tmp_file.name
-
-            # Determine the loader based on the file extension
-            if uploaded_file.name.endswith(".pdf"):
-                loader = PyPDFLoader(tmp_file_path)
-            elif uploaded_file.name.endswith(".docx"):
-                loader = Docx2txtLoader(tmp_file_path)
-            elif uploaded_file.name.endswith(".txt"):
-                loader = TextLoader(tmp_file_path)
-            else:
-                st.warning(f"Unsupported file type: {uploaded_file.name}. Skipping.")
-                continue
-
-            # Load and concatenate text
-            documents = loader.load()
-            for doc in documents:
-                text += doc.page_content + "\n"
-
-            # Clean up the temporary file
-            os.remove(tmp_file_path)
-
+            if file.name.endswith('.pdf'):
+                pdf_reader = PdfReader(file)
+                for page in pdf_reader.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text
+            elif file.name.endswith('.docx'):
+                doc = Document(file)
+                for para in doc.paragraphs:
+                    text += para.text + "\n"
+            elif file.name.endswith('.txt'):
+                text += file.getvalue().decode("utf-8")
         except Exception as e:
-            st.error(f"Error processing file {uploaded_file.name}: {e}")
+            st.error(f"Error reading {file.name}: {e}")
     return text
 
-def get_text_chunks(text):
+# Function to split text into manageable chunks
+def get_text_chunks(raw_text):
     """
-    Splits a long text into smaller, manageable chunks.
+    Splits the extracted text into smaller chunks for processing.
     """
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
-        chunk_overlap=200,
-        length_function=len
+        chunk_overlap=200
     )
-    return text_splitter.split_text(text)
+    chunks = text_splitter.split_text(raw_text)
+    return chunks
 
-def get_vector_store(text_chunks, embeddings_model):
+# Function to create and save a vector store from text chunks
+def get_vector_store(text_chunks):
     """
-    Creates a FAISS vector store from text chunks and an embeddings model.
+    Creates a FAISS vector store from text chunks using Sentence Transformer embeddings.
     """
+    if not text_chunks:
+        st.warning("No text to process. Please upload and process valid documents.")
+        return None
     try:
-        vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings_model)
-        return vectorstore
+        # Using a popular and efficient sentence transformer model
+        embeddings = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
+        vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
+        return vector_store
     except Exception as e:
         st.error(f"Failed to create vector store: {e}")
         return None
 
-def get_conversation_chain(vectorstore, llm):
+# Function to create a conversational chain
+def get_conversational_chain(vector_store):
     """
-    Creates a conversational retrieval chain.
-    This chain combines the language model with the vector store for RAG.
+    Creates a conversational retrieval chain with memory.
     """
-    memory = ConversationBufferMemory(
-        memory_key='chat_history',
-        return_messages=True,
-        output_key='answer'
-    )
-    prompt = PromptTemplate(
-        input_variables=["context", "chat_history", "question"],
-        template=PROMPT_TEMPLATE
-    )
-    conversation_chain = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=vectorstore.as_retriever(),
-        memory=memory,
-        return_source_documents=True,
-        combine_docs_chain_kwargs={"prompt": prompt},
-        output_key='answer'
-    )
-    return conversation_chain
+    try:
+        # Access the API key from Streamlit secrets
+        google_api_key = st.secrets["GOOGLE_API_KEY"]
+        if not google_api_key:
+            st.error("Google API Key not found. Please add it to your Streamlit secrets.")
+            return None
 
+        llm = GoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=google_api_key, temperature=0.4)
+        
+        memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+        
+        # Custom prompt template
+        custom_prompt_template = """
+        You are DocuMind, an intelligent assistant. Use the provided context from the documents to answer the user's question.
+        Your goal is to be as helpful as possible.
+
+        If the answer is in the context, provide a detailed answer based on it.
+        If the answer is not found in the context, use your general knowledge to answer, but you MUST explicitly state: "This answer is from my general knowledge base as I couldn't find the information in the provided document(s)."
+        
+        Context:
+        {context}
+
+        Chat History:
+        {chat_history}
+
+        Question:
+        {question}
+
+        Helpful Answer:
+        """
+        
+        PROMPT = PromptTemplate(
+            template=custom_prompt_template, input_variables=["context", "chat_history", "question"]
+        )
+
+        chain = ConversationalRetrievalChain.from_llm(
+            llm=llm,
+            retriever=vector_store.as_retriever(),
+            memory=memory,
+            combine_docs_chain_kwargs={"prompt": PROMPT}
+        )
+        return chain
+    except Exception as e:
+        st.error(f"Error creating conversational chain: {e}")
+        return None
+
+# Function to handle user input and display conversation
 def handle_user_input(user_question):
     """
-    Processes user input, generates a response, and updates the chat history.
+    Processes user's question and updates the chat history.
     """
     if st.session_state.conversation:
-        try:
-            response = st.session_state.conversation({
-                'question': user_question,
-                'chat_history': st.session_state.get('chat_history', [])
-            })
-            st.session_state.chat_history.append({'question': user_question, 'answer': response['answer']})
+        response = st.session_state.conversation({'question': user_question})
+        st.session_state.chat_history = response['chat_history']
 
-            # Display the response with sources
-            st.chat_message("assistant").write(response['answer'])
-            with st.expander("Sources"):
-                for source in response['source_documents']:
-                    st.write(f"- {source.metadata.get('source', 'Unknown')}: ...{source.page_content[:150]}...")
-        except Exception as e:
-            st.error(f"An error occurred while generating the response: {e}")
+        for i, message in enumerate(st.session_state.chat_history):
+            if i % 2 == 0:
+                with st.chat_message("user", avatar="👤"):
+                    st.write(message.content)
+            else:
+                with st.chat_message("assistant", avatar="🤖"):
+                    st.write(message.content)
     else:
-        st.warning("Please upload and process documents first.")
+        st.warning("Please process your documents first.")
 
+# Main Streamlit app
 def main():
-    """
-    The main function that runs the Streamlit application.
-    """
-    st.set_page_config(page_title="Document Chatbot", page_icon=":books:")
-    st.header("Chat with your Documents 📚")
+    st.set_page_config(page_title="DocuMind", page_icon="🧠", layout="wide")
 
-    # Initialize session state variables
+    # --- Initializing Session State ---
     if "conversation" not in st.session_state:
         st.session_state.conversation = None
     if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
+        st.session_state.chat_history = None
+    if "vector_store" not in st.session_state:
+        st.session_state.vector_store = None
 
-    # Sidebar for configuration and file upload
+    # --- Sidebar for File Upload and Processing ---
     with st.sidebar:
-        st.subheader("Configuration")
-        api_key = get_google_api_key()
-        if not api_key:
-            st.info("Please add your Google API key to continue.")
-            st.stop()
-
+        st.title("DocuMind 🧠")
+        st.markdown("Your intelligent document assistant. Upload your files and ask questions.")
+        
         uploaded_files = st.file_uploader(
-            "Upload your documents (PDF, DOCX, TXT)",
+            "Upload your Documents (PDF, DOCX, TXT)",
             accept_multiple_files=True,
             type=['pdf', 'docx', 'txt']
         )
-
-        if st.button("Process Documents"):
-            if not uploaded_files:
-                st.warning("Please upload at least one document.")
-            else:
-                with st.spinner("Processing documents... This might take a moment."):
-                    # 1. Get text from documents
-                    raw_text = get_text_from_documents(uploaded_files)
-                    if not raw_text:
-                        st.error("No text could be extracted from the documents.")
-                        st.stop()
-
-                    # 2. Split text into chunks
+        
+        if st.button("Process Documents", use_container_width=True, type="primary"):
+            if uploaded_files:
+                with st.spinner("Reading files..."):
+                    raw_text = get_text_from_files(uploaded_files)
+                with st.spinner("Chunking text..."):
                     text_chunks = get_text_chunks(raw_text)
+                with st.spinner("Creating vector store... This may take a moment."):
+                    vector_store = get_vector_store(text_chunks)
+                    if vector_store:
+                        st.session_state.vector_store = vector_store
+                        st.session_state.conversation = get_conversational_chain(st.session_state.vector_store)
+                        st.success("Documents processed successfully!")
+            else:
+                st.warning("Please upload at least one document.")
 
-                    # 3. Load embeddings model
-                    embeddings_model = get_embeddings_model()
-
-                    # 4. Create vector store
-                    vectorstore = get_vector_store(text_chunks, embeddings_model)
-                    if vectorstore:
-                        # 5. Initialize LLM
-                        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key)
-
-                        # 6. Create conversation chain and store in session state
-                        st.session_state.conversation = get_conversation_chain(vectorstore, llm)
-                        st.success("Documents processed successfully! You can now ask questions.")
+    # --- Main Chat Interface ---
+    st.header("Ask DocuMind Anything")
+    
+    if st.session_state.vector_store is None:
+        st.info("Welcome to DocuMind! Please upload and process your documents in the sidebar to begin.")
 
     # Display chat history
-    for message in st.session_state.chat_history:
-        with st.chat_message("user"):
-            st.write(message['question'])
-        with st.chat_message("assistant"):
-            st.write(message['answer'])
+    if st.session_state.chat_history:
+        for i, message in enumerate(st.session_state.chat_history):
+            if i % 2 == 0:
+                 with st.chat_message("user", avatar="👤"):
+                    st.write(message.content)
+            else:
+                with st.chat_message("assistant", avatar="🤖"):
+                    st.write(message.content)
 
-    # Chat input for user questions
-    user_question = st.chat_input("Ask a question about your documents:")
+    # Chat input
+    user_question = st.chat_input("Ask a question about your documents...")
     if user_question:
-        with st.chat_message("user"):
-            st.write(user_question)
-        handle_user_input(user_question)
+        if st.session_state.conversation:
+             with st.chat_message("user", avatar="👤"):
+                st.write(user_question)
+             with st.chat_message("assistant", avatar="🤖"):
+                with st.spinner("Thinking..."):
+                    response = st.session_state.conversation({'question': user_question})
+                    st.session_state.chat_history = response['chat_history']
+                    st.write(response['chat_history'][-1].content)
+        else:
+            st.warning("Please process your documents before asking questions.")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
