@@ -2,12 +2,11 @@ import streamlit as st
 import os
 from PyPDF2 import PdfReader
 from docx import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import SentenceTransformerEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain.chains.question_answering import load_qa_chain
 from langchain_google_genai import GoogleGenerativeAI
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 
@@ -76,7 +75,7 @@ def get_conversational_chain(vector_store):
             st.error("Google API Key not found. Please add it to your Streamlit secrets.")
             return None
 
-        llm = GoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=google_api_key, temperature=0.4)
+        llm = GoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=google_api_key, temperature=0.3)
         
         memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
         
@@ -205,3 +204,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
