@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import time
 from PyPDF2 import PdfReader
 from docx import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -116,6 +117,15 @@ def get_conversational_chain(vector_store):
         st.error(f"Error creating conversational chain: {e}")
         return None
 
+# Generator function to stream the response like a typewriter
+def stream_response(text):
+    """
+    A generator function to yield text word by word for a streaming effect.
+    """
+    for word in text.split():
+        yield word + " "
+        time.sleep(0.05) # Adjust this delay for typing speed
+
 # Main Streamlit app
 def main():
     st.set_page_config(page_title="DocuMind", page_icon="🧠", layout="wide")
@@ -182,8 +192,11 @@ def main():
                     response = st.session_state.conversation({'question': user_question})
                     # Update the chat history in the session state
                     st.session_state.chat_history = response['chat_history']
-                    # Display the latest assistant message
-                    st.write(response['chat_history'][-1].content)
+                    
+                    # Get the latest assistant response
+                    assistant_response = response['chat_history'][-1].content
+                    # Use the generator to stream the response
+                    st.write_stream(stream_response(assistant_response))
         else:
             st.warning("Please process your documents before asking questions.")
 
