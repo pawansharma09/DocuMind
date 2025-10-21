@@ -1,9 +1,11 @@
 streamlit
 langchain
 langchain-google-genai
-langchain-community
-pypdf
-python-docx
-faiss-cpu
+langchain_community
+google-generativeai
 sentence-transformers
-huggingface-hub
+faiss-cpu
+PyPDF2
+python-docx
+tiktoken
+lxml
