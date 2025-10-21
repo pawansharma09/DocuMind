@@ -1,11 +1,9 @@
 streamlit
-PyPDF2
-python-docx
-langchain
-langchain-community
-langchain-core
-langchain-text-splitters
-langchain-google-genai
+google-generativeai
 sentence-transformers
 faiss-cpu
+PyPDF2
+python-docx
+tiktoken
 lxml
+numpy
